@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4002',
+        target: 'https://pocketbase-production-edf2.up.railway.app/',
         changeOrigin: true,
         rewrite: (path) => path
       }

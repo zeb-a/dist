@@ -2,7 +2,7 @@
 
 # Setup PocketBase collections for class123
 
-POCKETBASE_URL="http://localhost:4002"
+POCKETBASE_URL="https://pocketbase-production-edf2.up.railway.app/"
 ADMIN_EMAIL="admin@example.com"
 ADMIN_PASSWORD="password123"
 
