@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Trophy, AlertTriangle } from 'lucide-react';
 
-import { dicebearAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
+import { boringAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
 import SafeAvatar from './SafeAvatar';
 
 export default function BehaviorModal({ student, behaviors, onClose, onGivePoint }) {
@@ -24,7 +24,7 @@ export default function BehaviorModal({ student, behaviors, onClose, onGivePoint
           <button style={styles.closeBtn} onClick={onClose}><X size={24} /></button>
           <div style={styles.studentInfo}>
               <div style={styles.avatarWrapper}>
-              <SafeAvatar src={student.avatar || dicebearAvatar(student.name, student.gender)} name={student.name} alt={student.name} style={styles.avatar} />
+              <SafeAvatar src={student.avatar || boringAvatar(student.name, student.gender)} name={student.name} alt={student.name} style={styles.avatar} />
               <div style={styles.scoreBadge}>{student.score}</div>
             </div>
             <h2 style={styles.studentName}>{student.name}</h2>
@@ -39,7 +39,7 @@ export default function BehaviorModal({ student, behaviors, onClose, onGivePoint
           </div>
 
           <div style={styles.section}>
-            <div style={styles.buttonGrid}>
+            <div style={styles.buttonGrid} className="behavior-cards-container">
               {(activeTab === 'wow' ? wowCards : nonoCards).map(card => (
                 <button key={card.id} onClick={() => onGivePoint(card)} style={activeTab === 'wow' ? styles.cardButton : { ...styles.cardButton, borderLeft: '4px solid #F44336' }}>
                   <div style={{fontSize: '2.2rem', marginBottom: '5px'}}>{card.icon}</div>

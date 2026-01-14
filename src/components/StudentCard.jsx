@@ -1,16 +1,21 @@
-import { dicebearAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
+import React, { useState } from 'react';
+import { boringAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
 import SafeAvatar from './SafeAvatar';
+import { Edit2, Trash2 } from 'lucide-react';
 
-const StudentCard = ({ student, onClick }) => {
-  const displayAvatar = student.avatar || dicebearAvatar(student.name, student.gender);
+const StudentCard = ({ student, onClick, onEdit, onDelete }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const displayAvatar = student.avatar || boringAvatar(student.name, student.gender);
 
   return (
     <div 
       onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2 + window.scrollX;
-        const centerY = rect.top + rect.height / 2 + window.scrollY;
-        if (onClick) onClick(student, { x: centerX, y: centerY });
+        if (!e.target.closest('[data-action-btn]')) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2 + window.scrollX;
+          const centerY = rect.top + rect.height / 2 + window.scrollY;
+          if (onClick) onClick(student, { x: centerX, y: centerY });
+        }
       }}
       style={{
         backgroundColor: 'white',
@@ -19,19 +24,79 @@ const StudentCard = ({ student, onClick }) => {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
         boxShadow: '0 8px 16px rgba(0,0,0,0.05)',
         cursor: 'pointer',
         transition: 'transform 0.2s',
-        position: 'relative'
+        position: 'relative',
+        aspectRatio: '1 / 1'
       }}
-      onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
-      onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        e.currentTarget.style.transform = 'scale(1.05)';
+      }}
+      onMouseLeave={(e) => {
+        setIsHovered(false);
+        e.currentTarget.style.transform = 'scale(1)';
+      }}
     >
+      {isHovered && (onEdit || onDelete) && (
+        <div style={{
+          position: 'absolute', top: '10px', right: '10px',
+          display: 'flex', gap: '8px', zIndex: 10
+        }}>
+          {onEdit && (
+            <button
+              data-action-btn
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(student);
+              }}
+              style={{
+                background: 'white', border: '1px solid #ddd',
+                borderRadius: '8px', padding: '8px', cursor: 'pointer',
+                color: '#4CAF50', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#E8F5E9'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+            >
+              <Edit2 size={16} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              data-action-btn
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(student);
+              }}
+              style={{
+                background: 'white', border: '1px solid #ddd',
+                borderRadius: '8px', padding: '8px', cursor: 'pointer',
+                color: '#FF6B6B', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#FFEBEE'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+      )}
+
       <div style={{
-        position: 'absolute', top: '15px', right: '15px',
+        position: 'absolute', top: '12px', left: '12px',
         background: '#E3F2FD', color: '#2196F3',
-        width: '32px', height: '32px', borderRadius: '10px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
+        width: 'clamp(36px, 12%, 56px)',
+        height: 'clamp(36px, 12%, 56px)',
+        borderRadius: '10px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontWeight: 'bold',
+        fontSize: 'clamp(0.9rem, 3vw, 1.3rem)'
       }}>
         {student.score}
       </div>
@@ -42,17 +107,29 @@ const StudentCard = ({ student, onClick }) => {
         alt={student.name}
         loading="lazy"
         style={{
-          ...styles.avatar,
-          backgroundColor: '#FFEAA7',
-          borderRadius: '50%'
+          width: '70%',
+          height: '70%',
+          borderRadius: '50%',
+          objectFit: 'cover',
+          border: 'clamp(3px, 1.5%, 6px) solid white',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+          backgroundColor: '#FFEAA7'
         }}
       />
       
-      <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#2D3436' }}>
+      <div style={{
+        position: 'absolute',
+        bottom: '14px',
+        fontWeight: '800',
+        fontSize: 'clamp(0.9rem, 4%, 1.2rem)',
+        color: '#2D3436',
+        textAlign: 'center',
+        maxWidth: '85%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }}>
         {student.name}
-      </div>
-      <div style={{ fontSize: '0.8rem', color: '#B2BEC3', marginTop: '4px' }}>
-        {(student.gender || '').toUpperCase()}
       </div>
     </div>
   );
@@ -60,15 +137,6 @@ const StudentCard = ({ student, onClick }) => {
 
 
 const styles = {
-  avatar: {
-    width: '100px',
-    height: '100px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    border: '4px solid white',
-    boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-  },
-  // Add other styles here if your JSX uses them, like:
   card: {
     background: 'white',
     padding: '20px',

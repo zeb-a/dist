@@ -1,349 +1,647 @@
-import React, { useState, useEffect } from 'react';
-import { X, ArrowRight, Trophy, ShieldCheck, Zap, GraduationCap, Heart, BookOpen } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  X, ArrowRight, Trophy, ShieldCheck, Zap, GraduationCap,
+  Heart, BookOpen, ChevronLeft, Star, Layout, Users,
+  BarChart3, Dices, Settings, Ghost, LogOut
+} from 'lucide-react';
 import api from '../services/api';
+import ReportsPage from './ReportsPage';
+import ParentPortal from './ParentPortal';
+import StudentWorksheetSolver from './StudentWorksheetSolver';
 
-export default function LandingPage({ onLoginSuccess }) {
-	const [modalMode, setModalMode] = useState(null);
-	const [selectedRole, setSelectedRole] = useState(null);
-	const [email, setEmail] = useState('');
-	const [password, setPassword] = useState('');
-	const [name, setName] = useState('');
-	const [showForgot, setShowForgot] = useState(false);
-	const [forgotSent, setForgotSent] = useState(false);
-	const [resendSent, setResendSent] = useState(false);
-	const [confirmPassword, setConfirmPassword] = useState('');
-	const [error, setError] = useState('');
-	const [backendAvailable, setBackendAvailable] = useState(true);
-	// Production: Remove all local-only/migration state
+// --- SUB-COMPONENT: ACCESS CODE PORTAL ---
+const AccessCodePortal = ({ type, onBack, classes, setClasses }) => {
+  const [accessCode, setAccessCode] = useState('');
+  const [studentData, setStudentData] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [activeWorksheet, setActiveWorksheet] = useState(null);
 
-	useEffect(() => {
-		let mounted = true;
-		(async () => {
-			try {
-				await api.ping();
-				if (mounted) setBackendAvailable(true);
-			} catch (e) {
-				if (mounted) setBackendAvailable(false);
-			}
-		})();
-		return () => { mounted = false; };
-	}, []);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError(''); // Clear previous errors
+    if (accessCode.length < 5) return setError('Enter 5-digit code.');
+    setLoading(true);
 
-	// No-op: no local fallback allowed in production
+    try {
+      // 1. First, look for the student in your LOCAL classes prop (The reliable way)
+      let foundStudent = null;
+      let foundClass = null;
 
-	const migrateAll = async () => {
-		if (!localUsers || localUsers.length === 0) return;
-		setMigratingAll(true);
-		const statuses = { ...migrationStatus };
-		for (const u of [...localUsers]) {
-			const pwd = migratePasswords[u.email];
-			if (!pwd) {
-				statuses[u.email] = 'missing_password';
-				setMigrationStatus({ ...statuses });
-				continue;
-			}
-			try {
-				await api.register({ email: u.email, password: pwd, name: u.name });
-				statuses[u.email] = 'ok';
-				// remove from local storage immediately
-				const remaining = JSON.parse(localStorage.getItem('class123_users') || '[]').filter(x => x.email !== u.email);
-				localStorage.setItem('class123_users', JSON.stringify(remaining));
-				setLocalUsers(remaining);
-			} catch (err) {
-				statuses[u.email] = 'error';
-			}
-			setMigrationStatus({ ...statuses });
-		}
-		setMigratingAll(false);
-	};
+      classes.forEach(c => {
+        const student = c.students?.find(s => s.accessCode === accessCode);
+        if (student) {
+          foundStudent = student;
+          foundClass = c;
+        }
+      });
 
-	const handleSignup = async (e) => {
-		e.preventDefault();
-		setError('');
-		if (!backendAvailable) {
-			setError('Backend not available. Please connect to the server to create an account.');
-			return;
-		}
-		if (password !== confirmPassword) {
-			setError('Passwords do not match.');
-			return;
-		}
-		try {
-			const resp = await api.register({ email, password, name });
-			if (resp && resp.message) {
-				setError(resp.message);
-				setEmail('');
-				setPassword('');
-				setConfirmPassword('');
-				setName('');
-			} else {
-				setError('Account created! Please check your email to verify your account.');
-				setEmail('');
-				setPassword('');
-				setConfirmPassword('');
-				setName('');
-			}
-		} catch (err) {
-			console.error('Signup error:', err);
-			let msg = 'Failed to create account.';
-			if (err?.body) {
-				try {
-					const body = typeof err.body === 'string' ? JSON.parse(err.body) : err.body;
-					if (body.data?.email) msg = 'This email is already registered.';
-					else if (body.message) msg = body.message;
-					else if (body.error) msg = body.error;
-				} catch (e) { 
-					console.error('Error parsing body:', e);
-					msg = err.body?.message || err.message || msg; 
-				}
-			}
-			setError(msg);
-		}
-	};
+      if (foundStudent) {
+        setStudentData({
+          studentId: foundStudent.id,
+          studentName: foundStudent.name,
+          score: foundStudent.score || 0,
+          classData: foundClass // This now has the assignments!
+        });
+        setLoading(false);
+        return; // Stop here, we found them!
+      }
 
-	const handleLogin = async (e) => {
-		e.preventDefault();
-		setError('');
-		try {
-			const resp = await api.login({ email, password });
-			if (resp && resp.token) {
-				api.setToken(resp.token);
-				onLoginSuccess({ ...resp.user, token: resp.token });
-			}
-		} catch (err) {
-			let msg = 'Login failed.';
-			let showResend = false;
-			if (err?.body) {
-				try {
-					const body = typeof err.body === 'string' ? JSON.parse(err.body) : err.body;
-					if (body.message?.includes('email not verified')) {
-						msg = 'Please verify your email first. Check your inbox for the verification link.';
-						showResend = true;
-					} else if (body.message?.includes('not found')) msg = 'No account found with that email.';
-					else if (body.message?.includes('password')) msg = 'Incorrect password.';
-					else msg = body.message || msg;
-				} catch { msg = err.message || msg; }
-			}
-			setError(msg + (showResend ? ' (Check spam folder if not found)' : ''));
-		}
-	};
+      // 2. If not found locally, try the API (Original logic)
+      const data = await api.getStudentByCode(accessCode, type);
+      if (data) {
+        setStudentData(data);
+      } else {
+        setError(`Invalid ${type} code.`);
+      }
+    } catch (err) {
+      // If the API fails but we didn't find them locally, show the error
+      setError('Student not found in any class.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-	const handleForgot = async (e) => {
-		e.preventDefault();
-		setError('');
-		setForgotSent(false);
-		try {
-			await api.forgotPassword(email);
-			setForgotSent(true);
-		} catch (err) {
-			setError('Could not send reset email.');
-		}
-	};
+  // Inside AccessCodePortal component
+  if (studentData) {
+    // 1. ALWAYS find the most up-to-date class data from the global 'classes' prop
+    // This ensures that when a teacher publishes, the student sees it immediately.
+    // Use normalized ID comparison to handle string/number mismatches
+    const normalizeStudentId = (id) => {
+      if (id === undefined || id === null) return '';
+      return String(id).trim();
+    };
 
-	const handleResend = async (e) => {
-		e.preventDefault();
-		setError('');
-		setResendSent(false);
-		try {
-			await api.resendConfirmation(email);
-			setResendSent(true);
-		} catch (err) {
-			setError('Could not resend confirmation.');
-		}
-	};
+    const liveClassData = classes?.find(c =>
+      c.students?.some(s => normalizeStudentId(s.id) === normalizeStudentId(studentData.studentId))
+    ) || studentData.classData;
 
-	return (
-		<div style={modernStyles.container}>
-			<div style={modernStyles.glow}></div>
+    // Filter assignments to only show those assigned to this student
+    // If assignedTo is 'all' or if the student is in the selected list
+    const studentAssignments = liveClassData?.assignments?.filter(assignment => {
+      // If assignedToAll is true, all students can see it
+      if (assignment.assignedToAll === true || assignment.assignedTo === 'all') {
+        return true;
+      }
+      // If specific students are assigned, check if current student is in the list
+      // Handle potential type mismatches (string vs number IDs) and normalization
+      if (Array.isArray(assignment.assignedTo) && assignment.assignedTo.length > 0) {
+        const normalizedStudentId = normalizeStudentId(studentData.studentId);
+        return assignment.assignedTo.some(id => normalizeStudentId(id) === normalizedStudentId);
+      }
+      // Default: show the assignment
+      return true;
+    }) || [];
 
-			<nav style={modernStyles.nav}>
-				{!backendAvailable && (
-					<div style={{ background: '#FFF6F6', color: '#9B1C1C', padding: '10px 18px', borderRadius: 10, position: 'absolute', left: 20, top: 16, zIndex: 110, fontWeight: 600 }}>
-						Backend not available. Please connect to the server to create an account.
-					</div>
-				)}
-				<div style={modernStyles.logo}>Class123 <span style={modernStyles.badge}>2026</span></div>
-				<div style={modernStyles.navLinks}>
-					<a href="#why" style={modernStyles.anchor}>Why Us</a>
-					<a href="#how" style={modernStyles.anchor}>How To</a>
-					<button onClick={() => setModalMode('login')} style={modernStyles.loginBtn}>Login</button>
-					<button onClick={() => setModalMode('role')} style={modernStyles.signupBtn}>Sign Up Free</button>
-				</div>
-			</nav>
+    // Force a re-render when assignments change by using a key that depends on the assignments
+    const assignmentsKey = JSON.stringify(studentAssignments.map(a => a.id));
 
-			<section style={modernStyles.hero}>
-				<div style={modernStyles.tagline}>✨ The #1 Classroom Community Platform</div>
-				<h1 style={modernStyles.heroTitle}>Engage students like <br/> <span style={modernStyles.gradientText}>never before.</span></h1>
-				<p style={modernStyles.heroSub}>A complete ecosystem for teachers to track behavior, gamify learning, and connect with parents instantly.</p>
-				<div style={{display:'flex', gap:'15px', justifyContent:'center', marginTop:'30px'}}>
-						<button onClick={() => setModalMode('role')} style={modernStyles.mainCta}>Get Started for Free <ArrowRight size={18}/></button>
-				</div>
-			</section>
+    // 2. If a student is currently doing a worksheet, show the Solver
+    if (activeWorksheet) {
+      return (
+        <StudentWorksheetSolver
+          worksheet={activeWorksheet}
+          onClose={() => setActiveWorksheet(null)}
+          studentName={studentData.studentName}
+          studentId={studentData.studentId}
+          classId={liveClassData?.id}
+          classes={classes}
+          setClasses={setClasses}
+        />
+      );
+    }
 
-			<section id="why" style={modernStyles.infoSection}>
-				<h2 style={modernStyles.sectionHeading}>Why This is a Great Website</h2>
-				<div style={modernStyles.infoGrid}>
-						<div style={modernStyles.infoCard}>
-								<div style={modernStyles.iconBg}><Zap color="#4CAF50" /></div>
-								<h3>Real-time Reward System</h3>
-								<p>Instantly recognize student effort with visual and audio feedback that builds confidence.</p>
-						</div>
-						<div style={modernStyles.infoCard}>
-								<div style={modernStyles.iconBg}><Trophy color="#FFD700" /></div>
-								<h3>Egg Progress Goals</h3>
-								<p>Gamify the whole classroom experience. When the class works together, the egg hatches!</p>
-						</div>
-						<div style={modernStyles.infoCard}>
-								<div style={modernStyles.iconBg}><ShieldCheck color="#2196F3" /></div>
-								<h3>Data You Can Trust</h3>
-								<p>End-to-end encryption for all student records and teacher communication.</p>
-						</div>
-				</div>
-			</section>
+    return (
+      <div style={{ background: '#F8FAFC', minHeight: '100vh', paddingBottom: '50px' }}>
+        {/* Navbar */}
+        {/* Top Navigation Bar */}
+<div style={{ 
+  ...modernStyles.portalNav, 
+  display: 'flex', 
+  justifyContent: 'space-between', 
+  alignItems: 'center',
+  width: '100%',
+  padding: '20px 40px' 
+}}>
+  {/* Left Side */}
+  <h2 style={{ margin: 0, fontWeight: 900 }}>
+    {studentData.studentName}
+  </h2>
 
-			<section id="how" style={modernStyles.howSection}>
-					<div style={modernStyles.howContent}>
-							<h2 style={{fontSize: '40px', fontWeight: 900}}>How to use Class123</h2>
-							<div style={modernStyles.step}>
-									<div style={modernStyles.stepNum}>1</div>
-									<div>
-											<h4>Create your Digital Classroom</h4>
-											<p>Sign up as a teacher and add your students with custom avatars or real photos.</p>
-									</div>
-							</div>
-							<div style={modernStyles.step}>
-									<div style={modernStyles.stepNum}>2</div>
-									<div>
-											<h4>Award "Wow" & "Nono" Points</h4>
-											<p>Use your dashboard to reinforce positive behaviors during your lessons.</p>
-									</div>
-							</div>
-							<div style={modernStyles.step}>
-									<div style={modernStyles.stepNum}>3</div>
-									<div>
-											<h4>Automated Reporting</h4>
-											<p>Generate beautiful PDF reports for parents at the click of a button.</p>
-									</div>
-							</div>
-					</div>
-					<div style={modernStyles.howVisual}>
-							<div style={modernStyles.mockupCard}>🚀 Class Spirit: 100%</div>
-					</div>
-			</section>
+  {/* Right Side */}
+  <button 
+    onClick={() => { setStudentData(null); setPortalView(null); }} 
+    style={modernStyles.logoutBtn}
+  >
+    <LogOut size={18} style={{ marginRight: '8px' }} />
+    Logout
+  </button>
+</div>
+        <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '40px 20px' }}>
+          {/* STAT CARDS */}
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '40px' }}>
+            <div style={modernStyles.statCard}>
+              <Star color="#F59E0B" fill="#F59E0B" />
+              <div>
+                <div style={modernStyles.statVal}>{studentData.score || 0}</div>
+                <div style={modernStyles.statLabel}>Total Points</div>
+              </div>
+            </div>
+          </div>
 
-			{modalMode && (
-				<div style={modernStyles.overlay}>
-				  <div style={modernStyles.bentoContainer}>
-						<div style={modernStyles.modalHeader}>
-							<h2 style={{fontWeight: 900}}>{modalMode === 'role' ? 'Choose Account Type' : modalMode === 'signup' ? 'Sign Up' : 'Welcome Back'}</h2>
-							<X onClick={() => {setModalMode(null); setError('');}} style={{cursor:'pointer'}} />
-						</div>
+          {/* --- ASSIGNMENTS SECTION (The fix is here) --- */}
+          <h3 style={{ fontSize: '24px', fontWeight: 900, marginBottom: '20px', color: '#1E293B' }}>My Worksheets</h3>
+          <div key={assignmentsKey} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '25px' }}>
+            {studentAssignments.map((asn) => (
+              <div
+                key={asn.id}
+                onClick={() => setActiveWorksheet(asn)}
+                className="assignment-card-premium"
+                style={{
+                  background: '#ffffff',
+                  padding: '24px',
+                  borderRadius: '28px', // Extra round for friendliness
+                  border: '1px solid #E2E8F0',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '20px',
+                  position: 'relative',
+                  transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy transition
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)'
+                }}
 
-						{modalMode === 'role' && (
-							<div style={modernStyles.bentoGrid}>
-								<div onClick={() => {setSelectedRole('teacher'); setModalMode('signup');}} style={modernStyles.bentoCard}>
-									<GraduationCap size={40} color="#4CAF50" />
-									<h3>Teacher</h3>
-									<p>Manage your students.</p>
-								</div>
-								<div style={{...modernStyles.bentoCard, opacity: 0.6}}>
-									<Heart size={40} color="#FF5252" />
-									<h3>Parent</h3>
-									<p>View student reports.</p>
-								</div>
-								<div style={{...modernStyles.bentoCard, opacity: 0.6}}>
-									<BookOpen size={40} color="#4DB6AC" />
-									<h3>Student</h3>
-									<p>Track your badges.</p>
-								</div>
-							</div>
-						)}
+              >
+                {/* Icon with a soft background gradient */}
+                <div style={{
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                  borderRadius: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevents opening the worksheet
+                      if (window.confirm("Are you sure you want to delete this task?")) {
+                        // ⚡ SURGICAL FIX: Filter the specific assignment out of the classes state
+                        const updatedClasses = classes.map(cls => ({
+                          ...cls,
+                          assignments: cls.assignments ? cls.assignments.filter(a => a.id !== asn.id) : []
+                        }));
 
-								{(modalMode === 'signup' || modalMode === 'login') && (
-									modalMode === 'login' && showForgot ? (
-										<form onSubmit={handleForgot} style={modernStyles.authForm}>
-											<input type="email" placeholder="Email Address" style={modernStyles.input} onChange={e => setEmail(e.target.value)} required />
-											<button type="submit" style={modernStyles.mainCta}>Send Reset Link</button>
-											{forgotSent && <p style={{color:'green', fontSize:'13px', textAlign:'center'}}>Reset link sent! Check your email.</p>}
-											<p style={{textAlign:'center', marginTop: '15px', color: '#666'}}>
-												<span onClick={() => setShowForgot(false)} style={{color:'#4CAF50', cursor:'pointer', fontWeight:'bold', marginLeft:'5px'}}>Back to Login</span>
-											</p>
-										</form>
-									) : (
-										<form onSubmit={modalMode === 'signup' ? handleSignup : handleLogin} style={modernStyles.authForm}>
-											{error && <p style={{color:'red', fontSize:'13px', textAlign:'center'}}>{error}</p>}
-											<input type="email" placeholder="Email Address" style={modernStyles.input} onChange={e => setEmail(e.target.value)} required />
-											<input type="password" placeholder="Password" style={modernStyles.input} onChange={e => setPassword(e.target.value)} required />
-											{modalMode === 'signup' && (
-												<>
-													<input type="password" placeholder="Confirm Password" style={modernStyles.input} onChange={e => setConfirmPassword(e.target.value)} required />
-													<input placeholder="Full name (optional)" style={modernStyles.input} onChange={e => setName(e.target.value)} />
-												</>
-											)}
-											<button type="submit" style={modernStyles.mainCta}>
-												{modalMode === 'signup' ? 'Create My Account' : 'Log Into Dashboard'}
-											</button>
-											{modalMode === 'login' && (
-												<>
-													<p style={{textAlign:'center', marginTop: '10px', color: '#666'}}>
-														<span onClick={() => setShowForgot(true)} style={{color:'#4CAF50', cursor:'pointer', fontWeight:'bold'}}>Forgot password?</span>
-													</p>
-													{error === 'Account not confirmed. Check your email.' && (
-														<p style={{textAlign:'center', marginTop: '10px', color: '#666'}}>
-															<span onClick={handleResend} style={{color:'#4CAF50', cursor:'pointer', fontWeight:'bold'}}>Resend confirmation email</span>
-															{resendSent && <span style={{color:'green', marginLeft: 8}}>Sent!</span>}
-														</p>
-													)}
-												</>
-											)}
-											<p style={{textAlign:'center', marginTop: '15px', color: '#666'}}>
-												{modalMode === 'signup' ? 'Already have an account?' : 'New here?'} 
-												<span onClick={() => { setModalMode(modalMode === 'signup' ? 'login' : 'role'); setShowForgot(false); }} style={{color:'#4CAF50', cursor:'pointer', fontWeight:'bold', marginLeft:'5px'}}>
-													{modalMode === 'signup' ? 'Login' : 'Sign Up'}
-												</span>
-											</p>
-										</form>
-									)
-								)}
-					</div>
-				</div>
-			)}
-		</div>
-	);
+                        setClasses(updatedClasses);
+                      }
+                    }}
+                    className="delete-btn-hover"
+                    style={{
+                      position: 'absolute',
+                      top: '15px',
+                      right: '15px',
+                      background: '#fff',
+                      border: '1px solid #F1F5F9',
+                      borderRadius: '12px',
+                      padding: '8px',
+                      cursor: 'pointer',
+                      color: '#CBD5E1',
+                      zIndex: 10,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Ghost size={18} />
+                  </button>
+
+                  <BookOpen size={28} color="#4F46E5" strokeWidth={2.5} />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 900, color: '#1E293B' }}>
+                    {asn.title}
+                  </h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748B', fontWeight: 600 }}>
+                      {asn.questions?.length || 0} Questions
+                    </span>
+                    <div style={{ width: '4px', height: '4px', background: '#CBD5E1', borderRadius: '50%' }} />
+                    <span style={{ fontSize: '13px', color: '#4F46E5', fontWeight: 800 }}>
+                      Open Task
+                    </span>
+                  </div>
+                </div>
+
+                {/* Decorative arrow that appears on hover */}
+                <div style={{ color: '#4F46E5', opacity: 0.3 }}>
+                  <ArrowRight size={20} />
+                </div>
+
+                <style>{`
+        .assignment-card-premium:hover {
+          transform: translateY(-8px) scale(1.02);
+          border-color: #4F46E5;
+          box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.1), 0 10px 10px -5px rgba(79, 70, 229, 0.04);
+        }
+        .assignment-card-premium:hover h4 {
+          color: #4F46E5;
+        }
+      `}</style>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={modernStyles.portalContainer}>
+      <div style={modernStyles.glassCard}>
+        <div style={{ ...modernStyles.iconCircle, background: type === 'parent' ? '#FFF5F5' : '#E0F2F1' }}>
+          {type === 'parent' ? <Heart size={30} color="#FF5252" /> : <BookOpen size={30} color="#009688" />}
+        </div>
+        <h2 style={{ fontWeight: 900, fontSize: '24px', margin: '10px 0' }}>{type === 'parent' ? 'Parent' : 'Student'} Portal</h2>
+        <p style={{ color: '#64748B', marginBottom: '25px' }}>Enter your 5-digit access code.</p>
+        <form onSubmit={handleLogin} style={modernStyles.authForm}>
+          <input
+            type="text"
+            maxLength={5}
+            style={modernStyles.codeField}
+            placeholder="•••••"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value.replace(/[^0-9]/g, ''))}
+          />
+          {error && <p style={modernStyles.errorMsg}>{error}</p>}
+          <button type="submit" disabled={loading} style={modernStyles.mainCta}>
+            {loading ? 'Verifying...' : 'View Dashboard'}
+          </button>
+          <button type="button" onClick={onBack} style={modernStyles.ghostBtn}>Back to Home</button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default function LandingPage({ onLoginSuccess, classes, setClasses }) {
+  const [modalMode, setModalMode] = useState(null);
+  const [portalView, setPortalView] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    if (password !== confirmPassword) return setError('Passwords do not match.');
+    try {
+      await api.register({ email, password, name });
+      setModalMode('login');
+      setError('Account created! Please login.');
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const resp = await api.login({ email, password });
+      if (resp.token) {
+        api.setToken(resp.token);
+        onLoginSuccess({ ...resp.user, token: resp.token });
+      }
+    } catch (err) { setError(err.message); }
+  };
+
+  // if (portalView) return <AccessCodePortal type={portalView} onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} />;
+  // Replace your current portalView check with this:
+  if (portalView === 'parent') {
+    return <ParentPortal onBack={() => setPortalView(null)} />; //
+  }
+
+  if (portalView === 'student') {
+    return <AccessCodePortal type="student" onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} />; //
+  }
+  return (
+    <div style={modernStyles.container}>
+      <div style={modernStyles.meshBackground}></div>
+
+      {/* --- NAVBAR --- */}
+      <nav style={modernStyles.nav}>
+        <div style={modernStyles.logo}>ClassABC <span style={modernStyles.logoTag}>V.26</span></div>
+        <div style={modernStyles.navActions}>
+          <button onClick={() => setModalMode('role')} style={modernStyles.loginLink}>Login</button>
+          <button onClick={() => setModalMode('signup')} style={modernStyles.signupBtn}>Get Started Free</button>
+        </div>
+      </nav>
+
+      {/* --- HERO SECTION --- */}
+      <section style={modernStyles.heroSection}>
+        <div style={modernStyles.heroContent}>
+          <div style={modernStyles.tagBadge}>
+            <Star size={14} fill="#4CAF50" color="#4CAF50" />
+            Trusted by Modern Teachers
+          </div>
+          <h1 style={modernStyles.heroTitle}>
+            Classroom management <br />
+            <span style={modernStyles.gradientText}>made magical.</span>
+          </h1>
+          <p style={modernStyles.heroSubText}>
+            The all-in-one platform for behavior tracking, gamified "Egg Road" goals,
+            and instant parent communication.
+          </p>
+          <div style={modernStyles.heroBtnGroup}>
+            <button onClick={() => setModalMode('signup')} style={modernStyles.mainCta}>
+              Create My Class <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* --- LIVE APP SIMULATOR (CSS Composition) --- */}
+        <div style={modernStyles.mockupWrapper}>
+          <div style={modernStyles.appWindow}>
+            {/* Sidebar Simulation */}
+            <div style={modernStyles.appSidebar}>
+              <div style={modernStyles.sidebarIconActive}><Layout size={20} /></div>
+              <div style={modernStyles.sidebarIcon}><Trophy size={20} /></div>
+              <div style={modernStyles.sidebarIcon}><Settings size={20} /></div>
+            </div>
+            {/* Main Content Simulation */}
+            <div style={modernStyles.appContent}>
+              <div style={modernStyles.appHeader}>
+                <span style={{ fontWeight: 800 }}>Class 4-B</span>
+                <div style={modernStyles.eggRoadBar}>
+                  <div style={modernStyles.eggFill}></div>
+                  <span style={modernStyles.eggText}>🥚 Egg Road: 85%</span>
+                </div>
+              </div>
+              <div style={modernStyles.appGrid}>
+                {/* Simulated Student Cards */}
+                {['Pablo', 'Marie', 'Albert', 'Frida', 'Leo', 'Ada'].map((name, i) => (
+                  <div key={i} style={modernStyles.appCard}>
+                    <div style={modernStyles.appAvatar}>{name[0]}</div>
+                    <div style={modernStyles.appName}>{name}</div>
+                    <div style={modernStyles.appScore}>+{(i + 2) * 3}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Floating Action Button Simulation */}
+              <div style={modernStyles.appFab}><Dices size={20} /></div>
+            </div>
+          </div>
+          {/* Decorative Elements behind mockup */}
+          <div style={modernStyles.blob1}></div>
+          <div style={modernStyles.blob2}></div>
+        </div>
+      </section>
+
+      {/* --- FEATURES BENTO GRID --- */}
+      <section style={modernStyles.section}>
+        <div style={modernStyles.sectionHeader}>
+          <h2 style={modernStyles.sectionTitle}>Everything you need to run your class.</h2>
+          <p style={modernStyles.sectionSub}>We've packed ClassABC with tools to make your day easier.</p>
+        </div>
+
+        <div style={modernStyles.bentoGrid}>
+          {/* Egg Road Feature */}
+          <div style={{ ...modernStyles.bentoCard, gridColumn: 'span 2', background: 'linear-gradient(135deg, #F0FDF4 0%, #fff 100%)' }}>
+            <div style={modernStyles.iconBoxGreen}><Trophy size={28} color="#16A34A" /></div>
+            <h3>The Egg Road</h3>
+            <p style={modernStyles.bentoText}>Gamify good behavior! The whole class works together to fill the progress bar and hatch a surprise egg. Builds teamwork instantly.</p>
+          </div>
+
+          {/* Lucky Draw Feature */}
+          <div style={modernStyles.bentoCard}>
+            <div style={modernStyles.iconBoxOrange}><Dices size={28} color="#EA580C" /></div>
+            <h3>Lucky Draw</h3>
+            <p style={modernStyles.bentoText}>Need a volunteer? Pick a student at random fairly and quickly with our built-in selector.</p>
+          </div>
+
+          {/* Reports Feature */}
+          <div style={modernStyles.bentoCard}>
+            <div style={modernStyles.iconBoxBlue}><BarChart3 size={28} color="#2563EB" /></div>
+            <h3>Smart Reports</h3>
+            <p style={modernStyles.bentoText}>Automated weekly summaries help you spot trends and share progress with parents easily.</p>
+          </div>
+
+          {/* Safe Avatars Feature */}
+          <div style={{ ...modernStyles.bentoCard, gridColumn: 'span 2', background: 'linear-gradient(135deg, #EFF6FF 0%, #fff 100%)' }}>
+            <div style={modernStyles.iconBoxPurple}><Ghost size={28} color="#7C3AED" /></div>
+            <h3>Fun & Safe Avatars</h3>
+            <p style={modernStyles.bentoText}>Every student gets a unique, privacy-friendly avatar. No photos required, just fun characters that students love.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* --- REDESIGNED DARK SECTION (How it Works) --- */}
+      <section style={modernStyles.darkSection}>
+        <div style={modernStyles.darkInner}>
+          <h2 style={modernStyles.darkTitle}>Get started in 3 minutes.</h2>
+          <div style={modernStyles.stepsRow}>
+            <div style={modernStyles.stepCard}>
+              <div style={modernStyles.stepNum}>01</div>
+              <h4 style={modernStyles.stepTitle}>Create Class</h4>
+              <p style={modernStyles.stepDesc}>Name your class and paste your student list. We generate avatars automatically.</p>
+            </div>
+            <div style={modernStyles.stepConnector}><ArrowRight color="rgba(255,255,255,0.2)" /></div>
+            <div style={modernStyles.stepCard}>
+              <div style={modernStyles.stepNum}>02</div>
+              <h4 style={modernStyles.stepTitle}>Track Points</h4>
+              <p style={modernStyles.stepDesc}>Give "Wow" points for good work or "No-no" points for improvements.</p>
+            </div>
+            <div style={modernStyles.stepConnector}><ArrowRight color="rgba(255,255,255,0.2)" /></div>
+            <div style={modernStyles.stepCard}>
+              <div style={modernStyles.stepNum}>03</div>
+              <h4 style={modernStyles.stepTitle}>Share Access</h4>
+              <p style={modernStyles.stepDesc}>Send 5-digit codes to parents so they can view reports from home.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- FOOTER CTA --- */}
+      <section style={modernStyles.ctaSection}>
+        <h2 style={{ fontSize: '36px', fontWeight: 900, marginBottom: '20px' }}>Ready to upgrade your classroom?</h2>
+        <button onClick={() => setModalMode('signup')} style={modernStyles.mainCta}>
+          Join ClassABC Today
+        </button>
+        <p style={{ marginTop: '20px', color: '#64748B', fontSize: '14px' }}>© 2026 ClassABC. All rights reserved.</p>
+      </section>
+
+      {/* --- AUTH MODAL (Identity Selector) --- */}
+      {modalMode && (
+        <div style={modernStyles.overlay}>
+          <div style={modernStyles.modernModal}>
+            <div style={modernStyles.modalHeader}>
+              <div>
+                <h2 style={{ margin: 0, fontWeight: 900, fontSize: '24px' }}>
+                  {modalMode === 'role' ? 'Who are you?' : (modalMode === 'signup' ? 'Teacher Sign Up' : 'Teacher Login')}
+                </h2>
+                {modalMode === 'role' && <p style={{ margin: '5px 0 0', color: '#64748B' }}>Select your portal to continue.</p>}
+              </div>
+              <div onClick={() => setModalMode(null)} style={modernStyles.closeBtn}><X size={20} /></div>
+            </div>
+
+            {modalMode === 'role' && (
+              <div style={modernStyles.roleGrid}>
+                <div onClick={() => setModalMode('login')} style={modernStyles.roleOption}>
+                  <div style={{ ...modernStyles.roleIcon, background: '#E8F5E9' }}><GraduationCap color="#4CAF50" /></div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px' }}>Teacher</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>Login to dashboard</p>
+                  </div>
+                </div>
+                <div onClick={() => setPortalView('parent')} style={modernStyles.roleOption}>
+                  <div style={{ ...modernStyles.roleIcon, background: '#FFF1F2' }}><Heart color="#FF5252" /></div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px' }}>Parent</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>View child's report</p>
+                  </div>
+                </div>
+                <div onClick={() => setPortalView('student')} style={modernStyles.roleOption}>
+                  <div style={{ ...modernStyles.roleIcon, background: '#E0F2F1' }}><BookOpen color="#009688" /></div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px' }}>Student</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>Check your points</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(modalMode === 'signup' || modalMode === 'login') && (
+              <form onSubmit={modalMode === 'signup' ? handleSignup : handleLogin} style={modernStyles.authForm}>
+                {error && <div style={modernStyles.errorBanner}>{error}</div>}
+                {modalMode === 'signup' && <input placeholder="Full Name" style={modernStyles.modernInput} onChange={e => setName(e.target.value)} required />}
+                <input type="email" placeholder="Email Address" style={modernStyles.modernInput} onChange={e => setEmail(e.target.value)} required />
+                <input type="password" placeholder="Password" style={modernStyles.modernInput} onChange={e => setPassword(e.target.value)} required />
+                {modalMode === 'signup' && <input type="password" placeholder="Confirm Password" style={modernStyles.modernInput} onChange={e => setConfirmPassword(e.target.value)} required />}
+
+                <button type="submit" style={{ ...modernStyles.mainCta, width: '100%', justifyContent: 'center' }}>
+                  {modalMode === 'signup' ? 'Create Free Account' : 'Login to Class'}
+                </button>
+
+                <p style={{ textAlign: 'center', fontSize: '13px', color: '#64748B', marginTop: '15px' }}>
+                  {modalMode === 'signup' ? "Already have an account?" : "New here?"}
+                  <span onClick={() => setModalMode(modalMode === 'signup' ? 'login' : 'signup')} style={{ color: '#16A34A', cursor: 'pointer', fontWeight: 800, marginLeft: '5px' }}>
+                    {modalMode === 'signup' ? 'Login' : 'Create Account'}
+                  </span>
+                </p>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
-
+// --- MODERN 2026 STYLES ---
 const modernStyles = {
-	container: { height: '100vh', background: '#fff', fontFamily: 'system-ui', overflowY: 'auto' },
-	glow: { position: 'fixed', top: 0, width: '100%', height: '100%', background: 'radial-gradient(circle at 50% -20%, #e8f5e9, transparent)', pointerEvents: 'none' },
-	nav: { padding: '20px 80px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(10px)', position: 'sticky', top: 0, zIndex: 100 },
-	logo: { fontSize: '24px', fontWeight: '900', letterSpacing: '-1px' },
-	badge: { fontSize: '10px', background: '#000', color: '#fff', padding: '2px 8px', borderRadius: '10px', verticalAlign: 'middle' },
-	navLinks: { display: 'flex', gap: '30px', alignItems: 'center' },
-	anchor: { textDecoration: 'none', color: '#444', fontWeight: '500' },
-	loginBtn: { background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' },
-	signupBtn: { background: '#1a1a1b', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', cursor: 'pointer' },
-	hero: { textAlign: 'center', padding: '100px 20px' },
-	tagline: { color: '#4CAF50', fontWeight: 'bold', marginBottom: '15px' },
-	heroTitle: { fontSize: '48px', fontWeight: '900', lineHeight: 1.1, letterSpacing: '-1px' },
-	gradientText: { background: 'linear-gradient(90deg, #4CAF50, #2E7D32)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
-	heroSub: { fontSize: '18px', color: '#666', maxWidth: '700px', margin: '20px auto' },
-	mainCta: { background: '#000', color: '#fff', padding: '12px 22px', borderRadius: '12px', fontSize: '16px', fontWeight: '700', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' },
-	infoSection: { padding: '60px', background: '#f9f9f9' },
-	sectionHeading: { textAlign: 'center', fontSize: '32px', fontWeight: '900', marginBottom: '30px' },
-	infoGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' },
-	infoCard: { background: '#fff', padding: '20px', borderRadius: '18px', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' },
-	iconBg: { width: '50px', height: '50px', background: '#f5f5f5', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' },
-	howSection: { padding: '60px', display: 'flex', gap: '30px', alignItems: 'center' },
-	howContent: { flex: 1 },
-	step: { display: 'flex', gap: '12px', marginBottom: '20px' },
-	stepNum: { minWidth: '36px', height: '36px', background: '#4CAF50', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' },
-	howVisual: { flex: 1, height: '260px', background: '#eee', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-	mockupCard: { background: '#fff', padding: '14px 20px', borderRadius: '12px', fontWeight: '700', boxShadow: '0 8px 20px rgba(0,0,0,0.08)' },
-	overlay: { position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-	bentoContainer: { width: '680px', background: '#fff', padding: '36px', borderRadius: '26px', boxShadow: '0 20px 60px rgba(0,0,0,0.08)' },
-	modalHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '20px' },
-	bentoGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' },
-	bentoCard: { background: '#f5f5f7', padding: '20px', borderRadius: '14px', cursor: 'pointer', textAlign: 'center' },
-	authForm: { display: 'flex', flexDirection: 'column', gap: '12px' },
-	input: { padding: '12px', borderRadius: '10px', border: '1px solid #eee', fontSize: '14px' }
+  container: { background: '#fff', minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: '#1A1A1A', overflowX: 'hidden' },
+  meshBackground: { position: 'fixed', inset: 0, background: 'radial-gradient(at 0% 0%, rgba(76, 175, 80, 0.08) 0, transparent 50%), radial-gradient(at 100% 100%, rgba(37, 99, 235, 0.08) 0, transparent 50%)', zIndex: -1 },
+
+  // Nav
+  nav: { padding: '20px 60px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid rgba(0,0,0,0.04)' },
+  logo: { fontSize: '24px', fontWeight: 900, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center' },
+  logoTag: { background: '#1A1A1A', color: '#fff', fontSize: '11px', padding: '3px 8px', borderRadius: '8px', marginLeft: '8px', fontWeight: 700 },
+  navActions: { display: 'flex', gap: '20px', alignItems: 'center' },
+  loginLink: { background: 'none', border: 'none', fontWeight: 700, color: '#4B5563', cursor: 'pointer', fontSize: '15px' },
+  signupBtn: { background: '#1A1A1A', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer', fontSize: '15px', transition: 'transform 0.2s' },
+
+  // Hero
+  heroSection: { display: 'flex', alignItems: 'center', gap: '60px', padding: '80px 60px', maxWidth: '1400px', margin: '0 auto', minHeight: '600px' },
+  heroContent: { flex: 1 },
+  tagBadge: { display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#F0FDF4', color: '#15803D', padding: '8px 16px', borderRadius: '30px', fontSize: '13px', fontWeight: 700, marginBottom: '25px', boxShadow: '0 4px 10px rgba(76, 175, 80, 0.1)' },
+  heroTitle: { fontSize: '72px', fontWeight: 950, lineHeight: 1, letterSpacing: '-2px', margin: 0, color: '#0F172A' },
+  gradientText: { background: 'linear-gradient(135deg, #16A34A 0%, #2563EB 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+  heroSubText: { fontSize: '18px', color: '#64748B', maxWidth: '520px', margin: '30px 0', lineHeight: 1.6 },
+  heroBtnGroup: { display: 'flex', gap: '15px' },
+
+  // App Simulator (CSS Only)
+  mockupWrapper: { flex: 1.2, position: 'relative', display: 'flex', justifyContent: 'center' },
+  appWindow: { width: '100%', maxWidth: '650px', height: '400px', background: '#fff', borderRadius: '24px', boxShadow: '0 40px 80px -20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)', display: 'flex', overflow: 'hidden', position: 'relative', zIndex: 10 },
+  appSidebar: { width: '70px', background: '#F8FAFC', borderRight: '1px solid #F1F5F9', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' },
+  sidebarIconActive: { color: '#16A34A', background: '#DCFCE7', padding: '10px', borderRadius: '12px' },
+  sidebarIcon: { color: '#94A3B8', padding: '10px' },
+  appContent: { flex: 1, display: 'flex', flexDirection: 'column', background: '#fff' },
+  appHeader: { padding: '15px 25px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  eggRoadBar: { background: '#F0FDF4', padding: '6px 15px', borderRadius: '20px', width: '200px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center' },
+  eggFill: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '85%', background: '#4CAF50', opacity: 0.2 },
+  eggText: { fontSize: '11px', fontWeight: 800, color: '#15803D', zIndex: 1, width: '100%', textAlign: 'center' },
+  appGrid: { padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', overflow: 'hidden' },
+  appCard: { border: '1px solid #E2E8F0', borderRadius: '16px', padding: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' },
+  appAvatar: { width: '40px', height: '40px', background: '#F1F5F9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#64748B' },
+  appName: { fontSize: '12px', fontWeight: 700 },
+  appScore: { background: '#DCFCE7', color: '#15803D', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '10px' },
+  appFab: { position: 'absolute', bottom: '20px', right: '20px', width: '50px', height: '50px', background: '#1A1A1A', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 10px 20px rgba(0,0,0,0.2)' },
+  blob1: { position: 'absolute', top: '-50px', right: '-50px', width: '300px', height: '300px', background: 'radial-gradient(circle, #BBF7D0 0%, transparent 70%)', borderRadius: '50%', zIndex: 0, opacity: 0.6 },
+  blob2: { position: 'absolute', bottom: '-50px', left: '0px', width: '250px', height: '250px', background: 'radial-gradient(circle, #BFDBFE 0%, transparent 70%)', borderRadius: '50%', zIndex: 0, opacity: 0.6 },
+
+  // Bento
+  section: { padding: '100px 60px', maxWidth: '1300px', margin: '0 auto' },
+  sectionHeader: { textAlign: 'center', marginBottom: '60px' },
+  sectionTitle: { fontSize: '42px', fontWeight: 900, marginBottom: '15px' },
+  sectionSub: { fontSize: '18px', color: '#64748B' },
+  bentoGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '25px' },
+  bentoCard: { background: '#fff', border: '1px solid #E2E8F0', padding: '40px', borderRadius: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', transition: 'transform 0.2s', cursor: 'default' },
+  iconBoxGreen: { width: '60px', height: '60px', background: '#DCFCE7', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' },
+  iconBoxOrange: { width: '60px', height: '60px', background: '#FFEDD5', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' },
+  iconBoxBlue: { width: '60px', height: '60px', background: '#DBEAFE', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' },
+  iconBoxPurple: { width: '60px', height: '60px', background: '#F3E8FF', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' },
+  bentoText: { fontSize: '15px', color: '#64748B', lineHeight: 1.6, marginTop: '10px' },
+
+  // Dark Section
+  darkSection: { margin: '20px 20px 80px', background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 100%)', borderRadius: '40px', padding: '100px 40px', color: '#fff', position: 'relative', overflow: 'hidden' },
+  darkInner: { maxWidth: '1100px', margin: '0 auto' },
+  darkTitle: { fontSize: '48px', fontWeight: 900, textAlign: 'center', marginBottom: '80px', background: 'linear-gradient(90deg, #fff, #94A3B8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+  stepsRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '20px' },
+  stepCard: { flex: 1, background: 'rgba(255,255,255,0.05)', padding: '30px', borderRadius: '24px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' },
+  stepNum: { fontSize: '12px', fontWeight: 800, background: 'rgba(255,255,255,0.1)', padding: '4px 10px', borderRadius: '20px', display: 'inline-block', marginBottom: '20px', color: '#4CAF50' },
+  stepTitle: { fontSize: '20px', fontWeight: 800, marginBottom: '10px' },
+  stepDesc: { fontSize: '15px', color: '#94A3B8', lineHeight: 1.6 },
+  stepConnector: { marginTop: '50px' },
+
+  // CTA
+  ctaSection: { textAlign: 'center', padding: '0 20px 100px' },
+  mainCta: { background: '#1A1A1A', color: '#fff', border: 'none', padding: '18px 36px', borderRadius: '16px', fontSize: '16px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' },
+
+  // Portal & Modal
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(15px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modernModal: { width: '480px', background: '#fff', borderRadius: '32px', padding: '40px', boxShadow: '0 40px 100px rgba(0,0,0,0.1)', border: '1px solid #E2E8F0' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px' },
+  closeBtn: { padding: '8px', background: '#F1F5F9', borderRadius: '50%', cursor: 'pointer' },
+  roleGrid: { display: 'flex', flexDirection: 'column', gap: '15px' },
+  roleOption: { display: 'flex', alignItems: 'center', gap: '20px', padding: '20px', borderRadius: '20px', background: '#fff', border: '1px solid #E2E8F0', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' },
+  roleIcon: { width: '50px', height: '50px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  authForm: { display: 'flex', flexDirection: 'column', gap: '15px' },
+  modernInput: { padding: '16px', borderRadius: '14px', border: '1px solid #E2E8F0', background: '#F8FAFC', fontSize: '15px', outline: 'none' },
+  errorBanner: { background: '#FEF2F2', color: '#EF4444', padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, textAlign: 'center' },
+
+  portalContainer: { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC' },
+  glassCard: { width: '400px', background: '#fff', padding: '50px', borderRadius: '32px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' },
+  iconCircle: { width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' },
+  codeField: { fontSize: '40px', width: '100%', textAlign: 'center', border: 'none', fontWeight: 900, letterSpacing: '8px', marginBottom: '20px', color: '#1A1A1A' },
+  ghostBtn: { background: 'none', border: 'none', marginTop: '15px', color: '#64748B', fontWeight: 700, cursor: 'pointer' },
+  errorMsg: { color: '#EF4444', fontSize: '13px', fontWeight: 700, marginBottom: '10px' },
+
+  portalNav: { padding: '20px 40px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: '20px' },
+  classBadge: { background: '#F0FDF4', color: '#166534', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, marginLeft: '10px' },
+  backBtn: { background: '#F1F5F9', border: 'none', padding: '8px 16px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700 }
+  , statCard: { background: '#fff', padding: '20px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '15px', border: '1px solid #E2E8F0', minWidth: '200px' },
+  statVal: { fontSize: '24px', fontWeight: 900, color: '#1E293B' },
+  statLabel: { fontSize: '12px', color: '#64748B', fontWeight: 600 },
+  assignmentCard: { background: '#fff', padding: '20px', borderRadius: '24px', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' },
+  asnIcon: { background: '#EEF2FF', padding: '12px', borderRadius: '14px' },
+  startBtn: { background: '#4F46E5', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' },
+  emptyState: { gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: '#64748B', fontWeight: 600, background: '#F1F5F9', borderRadius: '24px' }
+  , logoutBtn: {
+    // Add these to your existing logoutBtn style for the dark 2026 look
+    background: '#1A1A1A',
+    color: '#fff',
+    padding: '10px 20px',
+    borderRadius: '12px',
+    border: 'none',
+    fontWeight: '800',
+    display: 'flex',
+    alignItems: 'center',
+    cursor: 'pointer'
+  }
 };

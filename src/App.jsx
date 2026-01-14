@@ -14,9 +14,11 @@ import VerifyEmailPage from './components/VerifyEmailPage';
 import { LogOut } from 'lucide-react';
 import PasswordResetPage from './components/PasswordResetPage';
 import ConfirmAccountPage from './components/ConfirmAccountPage';
-
+import OnboardingGuide from './components/OnboardingGuide';
+import HelpIcon from './components/HelpIcon';
+import SearchableGuide from './components/SearchableGuide';
+import AssignmentsPage from "./components/AssignmentsPage";
 // --- INITIAL DATA ---
-import { dicebearAvatar } from './utils/avatar';
 
 import { fallbackInitialsDataUrl } from './utils/avatar';
 
@@ -55,6 +57,24 @@ function App() {
   const [behaviors, setBehaviors] = useState(() => JSON.parse(localStorage.getItem('class123_behaviors')) || INITIAL_BEHAVIORS);
   const [activeClassId, setActiveClassId] = useState(null);
   const [view, setView] = useState('portal'); // 'portal' | 'dashboard' | 'egg' | 'settings' | 'setup'
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    // Check if user has completed onboarding
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('class123_logged_in');
+      if (stored) {
+        const parsedUser = JSON.parse(stored);
+        const hasCompletedOnboarding = localStorage.getItem(`class123_onboarding_${parsedUser.email}`);
+        return !hasCompletedOnboarding;
+      }
+    }
+    return false;
+  });
+
+  // 1. Add state to track if we are in the assignment studio
+  const [isAssignmentStudioOpen, setIsAssignmentStudioOpen] = useState(false);
+
+  const [showGuide, setShowGuide] = useState(false);
+
   const saveTimeoutRef = useRef(null);
   const lastSavedHashRef = useRef(null); // Track content hash to prevent duplicate saves
 
@@ -66,8 +86,8 @@ function App() {
   }, []);
 
   if (verificationToken) {
-    return <VerifyEmailPage 
-      token={verificationToken} 
+    return <VerifyEmailPage
+      token={verificationToken}
       onSuccess={() => {
         window.location.hash = '';
         window.location.reload();
@@ -78,25 +98,56 @@ function App() {
     />;
   }
 
-  // Load classes and behaviors for logged in user (try backend, fallback to localStorage)
+// Load classes and behaviors (for both logged in users and when accessed via student portal)
   useEffect(() => {
     // restore token into api layer if present
     const token = localStorage.getItem('class123_pb_token') || localStorage.getItem('class123_token');
     if (token) api.setToken(token);
 
-    if (!user) return;
+
     let mounted = true;
 
-    // Load classes from PocketBase
+// Load classes from PocketBase (try to use user email if available, otherwise load publically accessible data)
     (async () => {
       try {
-        const remote = await api.getClasses(user.email);
-        if (mounted && Array.isArray(remote)) {
-          setClasses(remote.length > 0 ? remote : []);
+        let remote = [];
+        if (user) {
+          // If user is logged in, load their classes
+          remote = await api.getClasses(user.email);
+        } else {
+          // If no user is logged in (student portal access), we should attempt to load the latest classes
+          // We'll try to get the email from localStorage to load the appropriate classes
+          const storedUser = localStorage.getItem('class123_logged_in');
+          if (storedUser) {
+            try {
+              const parsedUser = JSON.parse(storedUser);
+              remote = await api.getClasses(parsedUser.email);
+            } catch (e) {
+              console.warn('Could not parse stored user, falling back to localStorage');
+              // Fallback to localStorage
+              const key = `class123_data_${'anonymous'}`;
+              const localClasses = JSON.parse(localStorage.getItem(key)) || [];
+              if (localClasses.length > 0 && mounted) {
+                setClasses(localClasses);
+              }
+            }
+          } else {
+            // No stored user, try to load from localStorage fallback
+            const key = `class123_data_${'anonymous'}`;
+            const localClasses = JSON.parse(localStorage.getItem(key)) || [];
+            if (localClasses.length > 0 && mounted) {
+              setClasses(localClasses);
+            }
+          }
+        }
+
+        if (mounted && Array.isArray(remote) && remote.length > 0) {
+          setClasses(remote);
         }
       } catch (e) {
         // backend not available — load from localStorage fallback
-        const key = `class123_data_${user.email}`;
+        const userEmail = user?.email || 'anonymous';
+        const key = `class123_data_${userEmail}`;
         const localClasses = JSON.parse(localStorage.getItem(key)) || [];
         if (mounted) setClasses(localClasses);
       }
@@ -113,6 +164,7 @@ function App() {
         // backend not available — load from localStorage fallback
         const localBehaviors = JSON.parse(localStorage.getItem('class123_behaviors')) || INITIAL_BEHAVIORS;
         if (mounted) setBehaviors(localBehaviors);
+        console.warn('Loading behaviors from localStorage due to API error:', e.message);
       }
     })();
 
@@ -123,23 +175,23 @@ function App() {
   useEffect(() => {
     localStorage.setItem('class123_behaviors', JSON.stringify(behaviors));
     const token = localStorage.getItem('class123_pb_token') || localStorage.getItem('class123_token');
-    
+
     if (user && token && (behaviors.length > 0 || classes.length > 0)) {
       // Debounce saves to avoid duplicate records
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      
+
       saveTimeoutRef.current = setTimeout(async () => {
         try {
           console.log('[SAVE] Saving behaviors and classes...');
           await api.saveBehaviors(behaviors);
-          await api.saveClasses(user.email, classes);
+          await api.saveClasses(user.email, classes, behaviors);
         } catch (e) {
           console.error('Save failed:', e.message);
         }
       }, 1000); // Wait 1 second before saving
-      
+
       return () => {
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
@@ -156,6 +208,9 @@ function App() {
     localStorage.removeItem(`class123_data_${u.email}`);
     localStorage.removeItem('class123_behaviors');
     setUser(u);
+    // Check if this is a new user (no onboarding flag set)
+    const hasCompletedOnboarding = localStorage.getItem(`class123_onboarding_${u.email}`);
+    setShowOnboarding(!hasCompletedOnboarding);
   };
 
   const onLogout = () => {
@@ -168,6 +223,7 @@ function App() {
     setClasses([]);
     setActiveClassId(null);
     setView('portal');
+    setShowOnboarding(false);
   };
 
   const onAddClass = (newClass) => {
@@ -179,7 +235,7 @@ function App() {
           const key = `class123_data_${user.email}`;
           localStorage.setItem(key, JSON.stringify(next));
         }
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
@@ -198,13 +254,111 @@ function App() {
           const key = `class123_data_${user.email}`;
           localStorage.setItem(key, JSON.stringify(next));
         }
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
 
-  const activeClass = classes.find(c => c.id === activeClassId) || null;
+    const activeClass = classes.find(c => c.id === activeClassId) || null;
 
+  // Function to manually refresh classes from backend
+  const refreshClasses = async () => {
+    try {
+      let userEmail = user?.email;
+
+      // If no user is logged in, try to get the email from localStorage
+      if (!user) {
+        const storedUser = localStorage.getItem('class123_logged_in');
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            userEmail = parsedUser.email;
+          } catch (e) {
+            console.warn('Could not parse stored user for refresh');
+            return;
+          }
+        }
+      }
+
+      if (userEmail) {
+        const remoteClasses = await api.getClasses(userEmail);
+        if (remoteClasses && Array.isArray(remoteClasses)) {
+          setClasses(remoteClasses);
+        }
+      }
+    } catch (error) {
+      console.warn('Could not refresh classes:', error.message);
+    }
+  };
+
+  // --- THIS BLOCK MUST BE HERE (ABOVE THE MAIN RETURN) ---
+  if (isAssignmentStudioOpen) {
+    console.log("App.jsx: Rendering AssignmentsPage now!");
+    return (
+      <AssignmentsPage
+        activeClass={activeClass}
+        onBack={() => setIsAssignmentStudioOpen(false)}
+        onPublish={(assignmentData) => {
+          const newAsn = { 
+            ...assignmentData, 
+            id: Date.now(),
+            // Ensure consistent formatting of assignedTo array
+            assignedTo: Array.isArray(assignmentData.assignedTo) ? 
+              assignmentData.assignedTo.map(id => String(id)) : 
+              (assignmentData.assignedTo || 'all'),  // Store who it's assigned to
+            assignedToAll: assignmentData.assignedToAll !== undefined ? assignmentData.assignedToAll : true  // Default to all
+          };
+
+          setClasses(prevClasses => {
+            const newClasses = prevClasses.map(c => {
+              // Use String conversion to be 100% sure the IDs match
+              if (String(c.id) === String(activeClass.id)) {
+                // If assignment is for all students, keep all functionality as before
+                // If assignment is for specific students, we still store it in the class but handle visibility differently
+                return {
+                  ...c,
+                  assignments: [...(c.assignments || []), newAsn],
+                  // Initialize submissions array if it doesn't exist
+                  submissions: c.submissions || [],
+                  student_submissions: c.student_submissions || [], // Add this to prevent the Dashboard crash
+                                 // Initialize student_submissions array if it doesn't exist
+                  student_submissions: c.student_submissions || [],
+                  // Create individual student assignments for each student
+                  studentAssignments: [
+                    ...(c.studentAssignments || []),
+                    ...(c.students || []).filter(s => {
+                      // If assigned to all or if this student is in the assignedTo list
+                      if (newAsn.assignedToAll) return true;
+                      if (Array.isArray(newAsn.assignedTo) && newAsn.assignedTo.includes(String(s.id))) return true;
+                      return false;
+                    }).map(s => ({
+                      id: Date.now() + '_' + s.id, // Unique ID combining timestamp and student ID
+                      assignmentId: newAsn.id,
+                      studentId: s.id,
+                      classId: c.id,
+                      status: 'assigned',
+                      answers: {},
+                      assignedAt: new Date().toISOString()
+                    }))
+                  ]
+                };
+              }
+              return c;
+            });
+            console.log("Teacher just updated classes. New assignments:", newClasses.find(c => c.id === activeClass.id)?.assignments);
+            return newClasses;
+          });
+
+          // Simulate a notification to students that a new assignment is available
+          // This would trigger updates in the student portals
+          console.log("Assignment published successfully:", newAsn.title);
+          console.log("Assigned to:", newAsn.assignedTo, "Assigned to all:", newAsn.assignedToAll);
+
+          setIsAssignmentStudioOpen(false);
+        }}
+      />
+    );
+  }
   // Handle /reset/:token and /confirm/:token
   const hashRoute = getHashRoute();
   if (hashRoute.page === 'reset') {
@@ -213,14 +367,13 @@ function App() {
   if (hashRoute.page === 'confirm') {
     return <ConfirmAccountPage token={hashRoute.token} onSuccess={() => { window.location.hash = ''; }} />;
   }
-
-  if (!user) return <LandingPage onLoginSuccess={onLoginSuccess} />;
+if (!user) return <LandingPage onLoginSuccess={onLoginSuccess} classes={classes} setClasses={setClasses} refreshClasses={refreshClasses} />;
 
   // Profile modal
   if (showProfile) {
     return <ProfileModal user={user} onSave={async (data) => {
       try {
-        const result = await api.updateProfile(data);
+        const result = await api.updateProfile({ ...data, id: user.id });
         if (result && result.user) {
           setUser(u => ({ ...u, ...result.user }));
           localStorage.setItem('class123_logged_in', JSON.stringify({ ...user, ...result.user }));
@@ -233,10 +386,14 @@ function App() {
         let msg = 'Failed to update profile.';
         if (err?.body) {
           try {
-            const body = JSON.parse(err.body);
+            const body = typeof err.body === 'string' ? JSON.parse(err.body) : err.body;
             if (body.error === 'not_found') msg = 'User not found. Please log in again.';
-            else msg = body.error;
-          } catch { msg = err.body; }
+            else msg = body.error || body.message || 'Failed to update profile.';
+          } catch {
+            msg = typeof err.body === 'string' ? err.body : err.message || 'Failed to update profile.';
+          }
+        } else if (err?.message) {
+          msg = err.message;
         }
         alert(msg);
       }
@@ -253,6 +410,7 @@ function App() {
         onAddClass={(c) => onAddClass(c)}
         onLogout={onLogout}
         onEditProfile={() => setShowProfile(true)}
+        updateClasses={setClasses}
       />
     );
   }
@@ -260,21 +418,73 @@ function App() {
   // Dashboard for a selected class
   if (view === 'dashboard' && activeClass) {
     return (
-      <ClassDashboard
-        user={user}
-        activeClass={activeClass}
-        behaviors={behaviors}
-        onBack={() => { setActiveClassId(null); setView('portal'); }}
-        onOpenEggRoad={() => setView('egg')}
-        onOpenSettings={() => setView('settings')}
-        updateClasses={updateClasses}
-        onUpdateBehaviors={(next) => setBehaviors(next)}
-      />
+      <>
+        <ClassDashboard
+          user={user}
+          activeClass={activeClass}
+          behaviors={behaviors}
+          onBack={() => { setActiveClassId(null); setView('portal'); }}
+          onOpenEggRoad={() => setView('egg')}
+          onOpenSettings={() => setView('settings')}
+          updateClasses={updateClasses}
+          onUpdateBehaviors={(next) => setBehaviors(next)}
+          onOpenAssignments={() => setIsAssignmentStudioOpen(true)}
+        />
+
+        {/* Help icon - floating ? button or searchable guide */}
+        {user && (
+          <>
+            {!showOnboarding && !localStorage.getItem(`class123_onboarding_${user.email}`) ? (
+              <HelpIcon onClick={() => {
+                setShowOnboarding(true);
+              }} />
+            ) : (
+              <HelpIcon onClick={() => {
+                setShowGuide(true);
+              }} />
+            )}
+          </>
+        )}
+
+        {showOnboarding && user && (
+          <OnboardingGuide
+            view="dashboard"
+            onComplete={() => {
+              setShowOnboarding(false);
+              localStorage.setItem(`class123_onboarding_${user.email}`, 'true');
+            }}
+          />
+        )}
+
+        {showGuide && user && !showOnboarding && (
+          <SearchableGuide
+            /* If we are on the dashboard AND the active class has 'isViewingReports' true,
+               show the "reports" guide. Otherwise, show the default "view".
+            */
+            view={(view === 'dashboard' && activeClass?.isViewingReports) ? 'reports' : view}
+            onClose={() => setShowGuide(false)}
+          />
+        )}
+      </>
     );
   }
 
   if (view === 'egg' && activeClass) {
-    return <EggRoad classData={activeClass} onBack={() => setView('dashboard')} />;
+    return (
+      <EggRoad
+        classData={activeClass}
+        onBack={() => setView('dashboard')}
+        onResetProgress={() => {
+          // Reset all students' points to 0
+          const updated = (prev) => prev.map(c =>
+            c.id === activeClass.id
+              ? { ...c, students: c.students.map(s => ({ ...s, score: 0 })) }
+              : c
+          );
+          setClasses(updated);
+        }}
+      />
+    );
   }
 
   if (view === 'settings' && activeClass) {
@@ -298,9 +508,46 @@ function App() {
       }} />
     );
   }
+  // 2. In your render logic:
 
   // Fallback to portal
-  return <TeacherPortal classes={classes} onSelectClass={onSelectClass} onAddClass={onAddClass} onLogout={onLogout} />;
+  return (
+    <>
+      <TeacherPortal classes={classes} onSelectClass={onSelectClass} onAddClass={onAddClass} onLogout={onLogout} />
+
+      {/* Help icon - floating ? button or searchable guide */}
+      {user && (
+        <>
+          {!showOnboarding && !localStorage.getItem(`class123_onboarding_${user.email}`) ? (
+            <HelpIcon onClick={() => {
+              setShowOnboarding(true);
+            }} />
+          ) : (
+            <HelpIcon onClick={() => {
+              setShowGuide(true);
+            }} />
+          )}
+        </>
+      )}
+
+      {showOnboarding && user && (
+        <OnboardingGuide
+          view="portal"
+          onComplete={() => {
+            setShowOnboarding(false);
+            localStorage.setItem(`class123_onboarding_${user.email}`, 'true');
+          }}
+        />
+      )}
+
+      {showGuide && user && !showOnboarding && (
+        <SearchableGuide
+          view="portal"
+          onClose={() => setShowGuide(false)}
+        />
+      )}
+    </>
+  );
 }
 
 // --- STYLES ---

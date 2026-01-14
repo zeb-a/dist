@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { dicebearAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
+import { boringAvatar, fallbackInitialsDataUrl } from '../utils/avatar';
 import SafeAvatar from './SafeAvatar';
 
 export default function ProfileModal({ user, onSave, onClose }) {
   const [name, setName] = useState(user.name || '');
-  const [avatar, setAvatar] = useState(user.avatar || dicebearAvatar(user.name || user.email));
+  const [avatar, setAvatar] = useState(user.avatar || boringAvatar(user.name || user.email));
   const [password, setPassword] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -32,8 +32,16 @@ export default function ProfileModal({ user, onSave, onClose }) {
   const handleAvatarUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    // Warn if file is too large (avatar images should be small)
+    if (file.size > 1024 * 1024) {
+      setError('Image is too large. Please choose a smaller image (under 1MB).');
+      return;
+    }
+    
     const reader = new FileReader();
     reader.onload = () => setAvatar(reader.result);
+    reader.onerror = () => setError('Failed to read file.');
     reader.readAsDataURL(file);
   };
 
