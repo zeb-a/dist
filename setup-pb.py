@@ -4,7 +4,7 @@ import requests
 import json
 import time
 
-BASE_URL = "http://localhost:4002/api"
+BASE_URL = "https://pocketbase-production-edf2.up.railway.app/api"
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "password"
 

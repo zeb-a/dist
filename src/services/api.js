@@ -16,7 +16,7 @@ const base = (() => {
   }
 
   // Production: use full URL to PocketBase
-  return 'http://127.0.0.1:4002/api';
+  return 'https://pocketbase-production-edf2.up.railway.app/api';
 })();
 
 function getToken() {

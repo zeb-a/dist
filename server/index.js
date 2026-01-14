@@ -9,7 +9,7 @@ const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@class123.local';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4002';
+const BASE_URL = process.env.BASE_URL || 'https://pocketbase-production-edf2.up.railway.app/';
 
 // Configure nodemailer (for demo: ethereal)
 let transporter = nodemailer.createTransport({
