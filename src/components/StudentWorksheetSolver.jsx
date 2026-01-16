@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import api from '../services/api'; // Adjust the path if your folder structure is different
 
-const StudentWorksheetSolver = ({ worksheet, onClose, studentName, studentId, classId, classes, setClasses }) => {
+const StudentWorksheetSolver = ({ worksheet, onClose, studentName, studentId, classId, classes, setClasses, onCompletion }) => {
   const [answers, setAnswers] = useState({});
 
   const handleAnswerChange = (questionId, value, questionType) => {
@@ -60,6 +60,12 @@ const submissionData = {
     });
 
     alert("Success! Your work has been submitted.");
+    
+    // Call the completion handler if provided
+    if (onCompletion) {
+      onCompletion(worksheet.id);
+    }
+    
     onClose();
   } catch (err) {
     console.error("SUBMISSION REJECTED BY POCKETBASE:");

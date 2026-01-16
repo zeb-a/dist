@@ -8,6 +8,7 @@ import api from '../services/api';
 import ReportsPage from './ReportsPage';
 import ParentPortal from './ParentPortal';
 import StudentWorksheetSolver from './StudentWorksheetSolver';
+import StudentPortal from './StudentPortal';
 
 // --- SUB-COMPONENT: ACCESS CODE PORTAL ---
 const AccessCodePortal = ({ type, onBack, classes, setClasses }) => {
@@ -319,7 +320,7 @@ export default function LandingPage({ onLoginSuccess, classes, setClasses }) {
   }
 
   if (portalView === 'student') {
-    return <AccessCodePortal type="student" onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} />; //
+    return <StudentPortal onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} />; //
   }
   return (
     <div style={modernStyles.container}>
