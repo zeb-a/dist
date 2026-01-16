@@ -321,19 +321,56 @@ const StudentPortal = ({ onBack, classes, setClasses, refreshClasses }) => {
     );
   }
 
+  // If still not found, try a more comprehensive search by looking at all classes
+  // and checking if the student ID exists in any class's students array
+  if (!liveClassData) {
+    for (let i = 0; i < classes?.length; i++) {
+      const classData = classes[i];
+      if (classData.students && Array.isArray(classData.students)) {
+        const foundStudent = classData.students.find(s => 
+          normalizeStudentId(s.id) === normalizeStudentId(studentData?.studentId)
+        );
+        if (foundStudent) {
+          liveClassData = classData;
+          break;
+        }
+      }
+    }
+  }
+
   // Filter assignments to only show those assigned to this student
   // If assignedToAll is true, all students can see it
   const studentAssignments = liveClassData?.assignments?.filter(assignment => {
+    // If assignedToAll is true, all students can see it
     if (assignment.assignedToAll === true || assignment.assignedTo === 'all') {
       return true;
     }
-    // If specific students are assigned, check if current student is in the list
-    // Handle potential type mismatches (string vs number IDs) and normalization
+    
+    // If assignedToAll is explicitly false, check if assigned to specific students
+    if (assignment.assignedToAll === false) {
+      // If specific students are assigned, check if current student is in the list
+      // Handle potential type mismatches (string vs number IDs) and normalization
+      if (Array.isArray(assignment.assignedTo) && assignment.assignedTo.length > 0) {
+        const normalizedStudentId = normalizeStudentId(studentData?.studentId);
+        return assignment.assignedTo.some(id => normalizeStudentId(id) === normalizedStudentId);
+      }
+      // If assignedToAll is false but no specific students listed, don't show
+      return false;
+    }
+    
+    // If assignedToAll is undefined (default case), assume it's for all students
+    // Or if assignment.assignedTo is undefined, also assume for all students
+    if (assignment.assignedToAll === undefined && assignment.assignedTo === undefined) {
+      return true;
+    }
+    
+    // If assignedTo is an array with specific students, check if current student is in the list
     if (Array.isArray(assignment.assignedTo) && assignment.assignedTo.length > 0) {
       const normalizedStudentId = normalizeStudentId(studentData?.studentId);
       return assignment.assignedTo.some(id => normalizeStudentId(id) === normalizedStudentId);
     }
-    // Default: show the assignment
+    
+    // Default: show the assignment to all students if no restrictions are set
     return true;
   }) || [];
 
