@@ -298,7 +298,7 @@ function App() {
       <AssignmentsPage
         activeClass={activeClass}
         onBack={() => setIsAssignmentStudioOpen(false)}
-        onPublish={(assignmentData) => {
+        onPublish={async (assignmentData) => {
           const newAsn = { 
             ...assignmentData, 
             id: Date.now(),
@@ -348,6 +348,23 @@ function App() {
             console.log("Teacher just updated classes. New assignments:", newClasses.find(c => c.id === activeClass.id)?.assignments);
             return newClasses;
           });
+
+          // Force save to backend to ensure assignment is synchronized
+          try {
+            console.log("Saving assignments to backend...");
+            await api.saveClasses(user.email, classes.map(c => {
+              if (String(c.id) === String(activeClass.id)) {
+                return {
+                  ...c,
+                  assignments: [...(c.assignments || []), newAsn]
+                };
+              }
+              return c;
+            }), behaviors);
+            console.log("Assignment successfully saved to backend");
+          } catch (error) {
+            console.error("Error saving assignment to backend:", error);
+          }
 
           // Simulate a notification to students that a new assignment is available
           // This would trigger updates in the student portals

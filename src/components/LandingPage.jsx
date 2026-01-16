@@ -283,7 +283,7 @@ const AccessCodePortal = ({ type, onBack, classes, setClasses }) => {
   );
 };
 
-export default function LandingPage({ onLoginSuccess, classes, setClasses }) {
+export default function LandingPage({ onLoginSuccess, classes, setClasses, refreshClasses }) {
   const [modalMode, setModalMode] = useState(null);
   const [portalView, setPortalView] = useState(null);
   const [email, setEmail] = useState('');
@@ -320,7 +320,7 @@ export default function LandingPage({ onLoginSuccess, classes, setClasses }) {
   }
 
   if (portalView === 'student') {
-    return <StudentPortal onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} />; //
+    return <StudentPortal onBack={() => setPortalView(null)} classes={classes} setClasses={setClasses} refreshClasses={refreshClasses} />; //
   }
   return (
     <div style={modernStyles.container}>

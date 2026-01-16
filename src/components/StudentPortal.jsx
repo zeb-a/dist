@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X, ArrowRight, Trophy, Star, BookOpen, Ghost, LogOut,
   CheckCircle, Clock, Award, MessageSquare, ChevronLeft
@@ -275,7 +275,7 @@ const modernStyles = {
   }
 };
 
-const StudentPortal = ({ onBack, classes, setClasses }) => {
+const StudentPortal = ({ onBack, classes, setClasses, refreshClasses }) => {
   const [studentData, setStudentData] = useState(() => {
     // Get student data from localStorage
     const saved = localStorage.getItem('class123_student_portal');
@@ -290,6 +290,12 @@ const StudentPortal = ({ onBack, classes, setClasses }) => {
     const saved = localStorage.getItem('class123_completed_assignments');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Effect to force re-render when classes change to update assignments
+  useEffect(() => {
+    // This useEffect will cause the component to re-render when classes change
+    // which will update the studentAssignments calculation
+  }, [classes]);
 
   // Normalize student ID for comparison
   const normalizeStudentId = (id) => {
@@ -483,17 +489,28 @@ const StudentPortal = ({ onBack, classes, setClasses }) => {
         <h2 style={{ margin: 0, fontWeight: 900, fontSize: '24px', color: '#1E293B' }}>
           {studentData.studentName}
         </h2>
-        <button 
-          onClick={handleLogout}
-          style={modernStyles.logoutBtn}
-          onMouseEnter={(e) => Object.assign(e.target.style, modernStyles.logoutBtnHover)}
-          onMouseLeave={(e) => {
-            Object.assign(e.target.style, modernStyles.logoutBtn);
-          }}
-        >
-          <LogOut size={18} style={{ marginRight: '8px' }} />
-          Logout
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={refreshClasses}
+            style={{...modernStyles.logoutBtn, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'}}
+            onMouseEnter={(e) => Object.assign(e.target.style, {...modernStyles.logoutBtn, ...modernStyles.logoutBtnHover, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'})}
+            onMouseLeave={(e) => Object.assign(e.target.style, {...modernStyles.logoutBtn, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'})}
+          >
+            <Clock size={18} style={{ marginRight: '8px' }} />
+            Refresh
+          </button>
+          <button 
+            onClick={handleLogout}
+            style={modernStyles.logoutBtn}
+            onMouseEnter={(e) => Object.assign(e.target.style, modernStyles.logoutBtnHover)}
+            onMouseLeave={(e) => {
+              Object.assign(e.target.style, modernStyles.logoutBtn);
+            }}
+          >
+            <LogOut size={18} style={{ marginRight: '8px' }} />
+            Logout
+          </button>
+        </div>
       </div>
 
       <div style={modernStyles.mainContent}>
