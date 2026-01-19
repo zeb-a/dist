@@ -60,7 +60,22 @@ export default function TeacherPortal({ user, classes, onSelectClass, onAddClass
   return (
     <div style={{ ...styles.container, fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system' }}>
       <nav style={styles.nav}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          {/* ClassABC Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+              <defs>
+                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+                </linearGradient>
+              </defs>
+              <circle cx="20" cy="20" r="18" fill="url(#logoGrad)" />
+              <text x="20" y="26" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">A</text>
+            </svg>
+            <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#1e293b' }}>ClassABC</span>
+          </div>
+          
           {/* show logged-in user (compact) */}
           {user && (
             <div style={{ marginLeft: 0, display: 'flex', alignItems: 'center', gap: 10 }}>

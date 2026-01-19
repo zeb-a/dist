@@ -491,7 +491,19 @@ export default function ClassDashboard({
     /* 3. STANDARD DASHBOARD VIEW (Default) */
     <>
       <header style={styles.header}>
-        <h2>{activeClass.name} {isAttendanceMode && <span style={{ fontSize: '0.8em', color: '#FF9800', fontWeight: 'bold' }}>- ATTENDANCE MODE</span>}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30">
+            <defs>
+              <linearGradient id="dashboardLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <circle cx="15" cy="15" r="14" fill="url(#dashboardLogoGrad)" />
+            <text x="15" y="19" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">A</text>
+          </svg>
+          <h2>{activeClass.name} {isAttendanceMode && <span style={{ fontSize: '0.8em', color: '#FF9800', fontWeight: 'bold' }}>- ATTENDANCE MODE</span>}</h2>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
           {isAttendanceMode && (
             <button

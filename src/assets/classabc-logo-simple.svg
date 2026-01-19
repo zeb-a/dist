@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="mainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a8a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#00000022"/>
+    </filter>
+  </defs>
+
+  <!-- ABC letters with bold styling -->
+  <g filter="url(#dropShadow)">
+    <text x="10" y="40" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="url(#mainGrad)">ABC</text>
+  </g>
+
+  <!-- Class text -->
+  <text x="75" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="normal" fill="#4b5563">Class</text>
+
+  <!-- Full logo text -->
+  <text x="75" y="45" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#1e293b">ClassABC</text>
+</svg>
