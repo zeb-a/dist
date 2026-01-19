@@ -328,7 +328,19 @@ export default function LandingPage({ onLoginSuccess, classes, setClasses, refre
 
       {/* --- NAVBAR --- */}
       <nav style={modernStyles.nav}>
-        <div style={modernStyles.logo}>ClassABC <span style={modernStyles.logoTag}>V.26</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+            <defs>
+              <linearGradient id="landingLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <circle cx="20" cy="20" r="18" fill="url(#landingLogoGrad)" />
+            <text x="20" y="26" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">A</text>
+          </svg>
+          <div style={modernStyles.logo}>ClassABC <span style={modernStyles.logoTag}>V.26</span></div>
+        </div>
         <div style={modernStyles.navActions}>
           <button onClick={() => setModalMode('role')} style={modernStyles.loginLink}>Login</button>
           <button onClick={() => setModalMode('signup')} style={modernStyles.signupBtn}>Get Started Free</button>
